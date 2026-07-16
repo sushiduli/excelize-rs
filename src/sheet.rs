@@ -2108,7 +2108,7 @@ fn adjust_range_sheet_name(data: &str, source: &str, target: &str) -> String {
     out
 }
 
-fn ensure_shared_strings_rel(rels: &mut crate::xml::workbook::XlsxRelationships) {
+pub(crate) fn ensure_shared_strings_rel(rels: &mut crate::xml::workbook::XlsxRelationships) {
     for rel in &rels.relationships {
         if rel.r#type == SOURCE_RELATIONSHIP_SHARED_STRINGS {
             return;

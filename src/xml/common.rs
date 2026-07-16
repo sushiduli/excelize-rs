@@ -150,7 +150,7 @@ pub struct XlsxColor {
 /// Directly maps the `t` element in a run or shared string item.
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct XlsxT {
-    #[serde(rename = "@xml:space", default)]
+    #[serde(rename = "@xml:space", default, skip_serializing_if = "Option::is_none")]
     pub space: Option<String>,
     #[serde(rename = "$value", default)]
     pub val: String,
@@ -214,11 +214,11 @@ pub struct XlsxPhoneticRun {
 /// Phonetic properties.
 #[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
 pub struct XlsxPhoneticPr {
-    #[serde(rename = "@fontId", default)]
+    #[serde(rename = "@fontId", default, skip_serializing_if = "Option::is_none")]
     pub font_id: Option<i64>,
-    #[serde(rename = "@type", default)]
+    #[serde(rename = "@type", default, skip_serializing_if = "Option::is_none")]
     pub r#type: Option<String>,
-    #[serde(rename = "@alignment", default)]
+    #[serde(rename = "@alignment", default, skip_serializing_if = "Option::is_none")]
     pub alignment: Option<String>,
 }
 

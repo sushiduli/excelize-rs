@@ -1073,6 +1073,7 @@ impl File {
     fn write_to_zip(&self, zw: &mut dyn ZipWriter) -> Result<()> {
         self.calc_chain_writer();
         self.comments_writer();
+        self.shared_strings_registrar();
         self.content_types_writer();
         self.drawings_writer();
         self.volatile_deps_writer();
@@ -1283,6 +1284,38 @@ impl File {
             self.shared_strings_map.lock().unwrap().clear();
         }
         Ok(())
+    }
+
+    /// Ensure `[Content_Types].xml` and the workbook relationships reference
+    /// the shared string table when it will be written to the package.
+    fn shared_strings_registrar(&self) {
+        let has_strings = self.shared_strings.lock().unwrap().is_some()
+            || self.temp_files.contains_key(DEFAULT_XML_PATH_SHARED_STRINGS);
+        if !has_strings {
+            return;
+        }
+        if let Ok(mut ct) = self.content_types_reader() {
+            let part_name = format!("/{DEFAULT_XML_PATH_SHARED_STRINGS}");
+            let exists = ct.entries.iter().any(|e| {
+                matches!(e, crate::xml::content_types::XlsxContentTypeEntry::Override(o) if o.part_name == part_name)
+            });
+            if !exists {
+                ct.entries
+                    .push(crate::xml::content_types::XlsxContentTypeEntry::Override(
+                        crate::xml::content_types::XlsxOverride {
+                            part_name,
+                            content_type:
+                                crate::constants::CONTENT_TYPE_SPREADSHEET_ML_SHARED_STRINGS
+                                    .to_string(),
+                        },
+                    ));
+                *self.content_types.lock().unwrap() = Some(ct);
+            }
+        }
+        let rels_path = self.get_workbook_rels_path();
+        let mut rels = self.rels_reader(&rels_path).unwrap_or_default().unwrap_or_default();
+        crate::sheet::ensure_shared_strings_rel(&mut rels);
+        self.relationships.insert(rels_path, rels);
     }
 
     fn shared_strings_writer(&self) {
