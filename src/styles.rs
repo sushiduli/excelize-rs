@@ -356,7 +356,7 @@ impl File {
             .map(|f| f.font.is_empty())
             .unwrap_or(true)
         {
-            return Ok("Calibri".to_string());
+            return Ok("宋体".to_string());
         }
         Ok(style_sheet.fonts.as_ref().unwrap().font[0]
             .name
@@ -3989,7 +3989,7 @@ mod tests {
     #[test]
     fn default_font_round_trip() {
         let f = File::new_with_options(Options::default());
-        assert_eq!(f.get_default_font().unwrap(), "Calibri");
+        assert_eq!(f.get_default_font().unwrap(), "宋体");
         f.set_default_font("Arial").unwrap();
         assert_eq!(f.get_default_font().unwrap(), "Arial");
     }

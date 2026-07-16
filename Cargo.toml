@@ -1,6 +1,6 @@
 [package]
 name = "excelize-rs"
-version = "0.1.4"
+version = "0.1.5"
 edition = "2024"
 description = "Rust language library for reading and writing Microsoft Excel (XLAM / XLSM / XLSX / XLTM / XLTX) spreadsheets"
 license = "BSD-3-Clause"
