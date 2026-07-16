@@ -1,7 +1,14 @@
 [package]
-name = "excelize"
+name = "excelize-rs"
 version = "0.1.0"
 edition = "2024"
+description = "Rust language library for reading and writing Microsoft Excel (XLAM / XLSM / XLSX / XLTM / XLTX) spreadsheets"
+license = "BSD-3-Clause"
+repository = "https://github.com/sushiduli/RS"
+homepage = "https://github.com/sushiduli/RS"
+readme = "README.md"
+keywords = ["excel", "xlsx", "spreadsheet", "office", "vba"]
+categories = ["data-structures", "encoding", "parser-implementations"]
 
 [dependencies]
 zip = "2"

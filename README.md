@@ -21,7 +21,7 @@ Add the dependency to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-excelize = { path = "." }
+excelize-rs = "0.1"
 ```
 
 ### Create spreadsheet
@@ -29,8 +29,8 @@ excelize = { path = "." }
 Here is a minimal example that creates a spreadsheet file:
 
 ```rust
-use excelize::errors::Result;
-use excelize::{File, Options};
+use excelize_rs::errors::Result;
+use excelize_rs::{File, Options};
 
 fn main() -> Result<()> {
     let mut f = File::new_with_options(Options::default());
@@ -57,8 +57,8 @@ fn main() -> Result<()> {
 Read values from an existing spreadsheet document:
 
 ```rust
-use excelize::errors::Result;
-use excelize::{File, Options};
+use excelize_rs::errors::Result;
+use excelize_rs::{File, Options};
 
 fn main() -> Result<()> {
     let f = File::open_file("Book1.xlsx", Options::default())?;
@@ -88,9 +88,9 @@ fn main() -> Result<()> {
 Create a style and apply it to a range of cells:
 
 ```rust
-use excelize::errors::Result;
-use excelize::styles::{Alignment, Fill, Font, Style};
-use excelize::{File, Options};
+use excelize_rs::errors::Result;
+use excelize_rs::styles::{Alignment, Fill, Font, Style};
+use excelize_rs::{File, Options};
 
 fn main() -> Result<()> {
     let mut f = File::new_with_options(Options::default());
@@ -130,10 +130,10 @@ fn main() -> Result<()> {
 ### Add chart to spreadsheet file
 
 ```rust
-use excelize::chart::{Chart, ChartSeries, ChartTitle, ChartType};
-use excelize::errors::Result;
-use excelize::xml::common::RichTextRun;
-use excelize::{File, Options};
+use excelize_rs::chart::{Chart, ChartSeries, ChartTitle, ChartType};
+use excelize_rs::errors::Result;
+use excelize_rs::xml::common::RichTextRun;
+use excelize_rs::{File, Options};
 
 fn main() -> Result<()> {
     let mut f = File::new_with_options(Options::default());
@@ -173,8 +173,8 @@ fn main() -> Result<()> {
 ### Add picture to spreadsheet file
 
 ```rust
-use excelize::errors::Result;
-use excelize::{File, Options};
+use excelize_rs::errors::Result;
+use excelize_rs::{File, Options};
 
 fn main() -> Result<()> {
     let mut f = File::open_file("Book1.xlsx", Options::default())?;
@@ -193,8 +193,8 @@ fn main() -> Result<()> {
 Generate worksheets with huge amounts of data using the streaming writer. Note that the writer borrows the workbook, so it must be dropped (for example by scoping it) before saving:
 
 ```rust
-use excelize::errors::Result;
-use excelize::{File, Options};
+use excelize_rs::errors::Result;
+use excelize_rs::{File, Options};
 
 fn main() -> Result<()> {
     let mut f = File::new_with_options(Options::default());
@@ -218,8 +218,8 @@ fn main() -> Result<()> {
 Open and save password-protected workbooks with the `password` option:
 
 ```rust
-use excelize::errors::Result;
-use excelize::{File, Options};
+use excelize_rs::errors::Result;
+use excelize_rs::{File, Options};
 
 fn main() -> Result<()> {
     // Open an encrypted workbook
