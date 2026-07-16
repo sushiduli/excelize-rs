@@ -667,7 +667,7 @@ impl File {
             // Strip extension-list blocks before deserializing: quick-xml/serde
             // cannot capture arbitrary nested XML in `<ext><$value/></ext>`.
             let data = strip_xml_element(&data, "extLst");
-            let wb: XlsxWorkbook = if data.is_empty() {
+            let mut wb: XlsxWorkbook = if data.is_empty() {
                 XlsxWorkbook::default()
             } else {
                 if let Some(attrs) = extract_root_namespace_attributes(&data) {
@@ -675,6 +675,14 @@ impl File {
                 }
                 xml_from_reader(data.as_slice()).unwrap_or_default()
             };
+            // quick-xml/serde surfaces the namespaced `r:id` attribute under
+            // its local name; move it back so sheets serialize with the
+            // required `r:id` attribute.
+            for sheet in &mut wb.sheets.sheet {
+                if sheet.id.is_none() {
+                    sheet.id = sheet.plain_id.take();
+                }
+            }
             *self.workbook.lock().unwrap() = Some(wb);
         }
         Ok(self.workbook.lock().unwrap().clone().unwrap())

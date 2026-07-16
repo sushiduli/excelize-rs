@@ -224,6 +224,13 @@ impl File {
         let ws = new_worksheet();
         self.sheet.insert(sheet_xml.clone(), ws.clone());
         self.pkg.insert(sheet_xml.clone(), worksheet_bytes(&ws));
+        // Register the standard worksheet namespaces so the part is written
+        // back with the same root attributes as the template sheet.
+        if let Some(attrs) =
+            crate::file::extract_root_namespace_attributes(crate::templates::TEMPLATE_SHEET.as_bytes())
+        {
+            self.xml_attr.insert(sheet_xml.clone(), attrs);
+        }
         self.checked.insert(sheet_xml.clone(), true);
 
         // Update content types.
