@@ -776,6 +776,11 @@ impl File {
         if data.is_empty() {
             return Ok(crate::xml::metadata::XlsxMetadata::default());
         }
+        // Strip blocks with arbitrary nested XML that quick-xml/serde cannot
+        // capture in `$value` fields; the value metadata used by in-cell
+        // pictures is preserved.
+        let data = strip_xml_element(&data, "metadataTypes");
+        let data = strip_xml_element(&data, "extLst");
         Ok(xml_from_reader(data.as_slice())?)
     }
 
@@ -919,7 +924,11 @@ impl File {
             id: new_id,
             r#type: rel_type.to_string(),
             target: target.to_string(),
-            target_mode: Some(target_mode.to_string()),
+            target_mode: if target_mode.is_empty() {
+                None
+            } else {
+                Some(target_mode.to_string())
+            },
         });
         self.relationships.insert(rel_path.to_string(), rels);
         r_id
@@ -1272,6 +1281,13 @@ impl File {
             let rels = entry.value().clone();
             if let Ok(mut output) = xml_to_string(&rels).map(|s| s.into_bytes()) {
                 self.replace_namespace_bytes_if_needed(&path, &mut output);
+                if !output.windows(6).any(|w| w == b"xmlns=".as_slice()) {
+                    let _ = replace_root_namespace_attributes(
+                        &mut output,
+                        "xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"",
+                    );
+                }
+                strip_empty_attributes(&mut output);
                 self.save_file_list(&path, &output);
             }
         }

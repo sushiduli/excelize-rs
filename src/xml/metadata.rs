@@ -14,19 +14,19 @@ use super::common::XlsxInnerXml;
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename = "metadata")]
 pub struct XlsxMetadata {
-    #[serde(rename = "metadataTypes", default)]
+    #[serde(rename = "metadataTypes", default, skip_serializing_if = "Option::is_none")]
     pub metadata_types: Option<XlsxInnerXml>,
-    #[serde(rename = "metadataStrings", default)]
+    #[serde(rename = "metadataStrings", default, skip_serializing_if = "Option::is_none")]
     pub metadata_strings: Option<XlsxInnerXml>,
-    #[serde(rename = "mdxMetadata", default)]
+    #[serde(rename = "mdxMetadata", default, skip_serializing_if = "Option::is_none")]
     pub mdx_metadata: Option<XlsxInnerXml>,
     #[serde(rename = "futureMetadata", default)]
     pub future_metadata: Vec<XlsxFutureMetadata>,
-    #[serde(rename = "cellMetadata", default)]
+    #[serde(rename = "cellMetadata", default, skip_serializing_if = "Option::is_none")]
     pub cell_metadata: Option<XlsxMetadataBlocks>,
-    #[serde(rename = "valueMetadata", default)]
+    #[serde(rename = "valueMetadata", default, skip_serializing_if = "Option::is_none")]
     pub value_metadata: Option<XlsxMetadataBlocks>,
-    #[serde(rename = "extLst", default)]
+    #[serde(rename = "extLst", default, skip_serializing_if = "Option::is_none")]
     pub ext_lst: Option<XlsxInnerXml>,
 }
 
@@ -36,7 +36,7 @@ pub struct XlsxMetadata {
 pub struct XlsxFutureMetadata {
     #[serde(rename = "bk", default)]
     pub bk: Vec<XlsxFutureMetadataBlock>,
-    #[serde(rename = "extLst", default)]
+    #[serde(rename = "extLst", default, skip_serializing_if = "Option::is_none")]
     pub ext_lst: Option<XlsxInnerXml>,
 }
 
@@ -45,7 +45,7 @@ pub struct XlsxFutureMetadata {
 /// information.
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct XlsxFutureMetadataBlock {
-    #[serde(rename = "extLst", default)]
+    #[serde(rename = "extLst", default, skip_serializing_if = "Option::is_none")]
     pub ext_lst: Option<XlsxInnerXml>,
 }
 
@@ -54,7 +54,7 @@ pub struct XlsxFutureMetadataBlock {
 /// and it stays tied to that cell position.
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct XlsxMetadataBlocks {
-    #[serde(rename = "@count", default)]
+    #[serde(rename = "@count", default, skip_serializing_if = "Option::is_none")]
     pub count: Option<i64>,
     #[serde(rename = "bk", default)]
     pub bk: Vec<XlsxMetadataBlock>,
@@ -82,11 +82,11 @@ pub struct XlsxMetadataRecord {
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename = "rvData")]
 pub struct XlsxRichValueData {
-    #[serde(rename = "@count", default)]
+    #[serde(rename = "@count", default, skip_serializing_if = "Option::is_none")]
     pub count: Option<i64>,
     #[serde(rename = "rv", default)]
     pub rv: Vec<XlsxRichValue>,
-    #[serde(rename = "extLst", default)]
+    #[serde(rename = "extLst", default, skip_serializing_if = "Option::is_none")]
     pub ext_lst: Option<XlsxInnerXml>,
 }
 
@@ -98,7 +98,7 @@ pub struct XlsxRichValue {
     pub s: i64,
     #[serde(rename = "v", default)]
     pub v: Vec<String>,
-    #[serde(rename = "fb", default)]
+    #[serde(rename = "fb", default, skip_serializing_if = "Option::is_none")]
     pub fb: Option<XlsxInnerXml>,
 }
 
@@ -109,7 +109,7 @@ pub struct XlsxRichValue {
 pub struct XlsxRichValueRels {
     #[serde(rename = "rel", default)]
     pub rels: Vec<XlsxRichValueRelRelationship>,
-    #[serde(rename = "extLst", default)]
+    #[serde(rename = "extLst", default, skip_serializing_if = "Option::is_none")]
     pub ext_lst: Option<XlsxInnerXml>,
 }
 
@@ -127,11 +127,11 @@ pub struct XlsxRichValueRelRelationship {
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename = "rvStructures")]
 pub struct XlsxRichValueStructures {
-    #[serde(rename = "@count", default)]
+    #[serde(rename = "@count", default, skip_serializing_if = "Option::is_none")]
     pub count: Option<i64>,
     #[serde(rename = "s", default)]
     pub s: Vec<XlsxRichValueStructure>,
-    #[serde(rename = "extLst", default)]
+    #[serde(rename = "extLst", default, skip_serializing_if = "Option::is_none")]
     pub ext_lst: Option<XlsxInnerXml>,
 }
 
@@ -150,7 +150,7 @@ pub struct XlsxRichValueStructure {
 pub struct XlsxRichValueKey {
     #[serde(rename = "@n")]
     pub n: String,
-    #[serde(rename = "@t", default)]
+    #[serde(rename = "@t", default, skip_serializing_if = "Option::is_none")]
     pub t: Option<String>,
 }
 
@@ -161,7 +161,7 @@ pub struct XlsxRichValueKey {
 pub struct XlsxWebImagesSupportingRichData {
     #[serde(rename = "webImageSrd", default)]
     pub web_image_srd: Vec<XlsxWebImageSupportingRichData>,
-    #[serde(rename = "extLst", default)]
+    #[serde(rename = "extLst", default, skip_serializing_if = "Option::is_none")]
     pub ext_lst: Option<XlsxInnerXml>,
 }
 
@@ -181,6 +181,6 @@ pub struct XlsxWebImageSupportingRichData {
 /// references part.
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct XlsxExternalReference {
-    #[serde(rename = "@r:id", default)]
+    #[serde(rename = "@r:id", default, skip_serializing_if = "Option::is_none")]
     pub r_id: Option<String>,
 }

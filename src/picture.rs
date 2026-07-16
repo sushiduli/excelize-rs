@@ -8,6 +8,7 @@
 use std::collections::HashMap;
 
 use quick_xml::de::from_reader as xml_from_reader;
+use quick_xml::se::to_string as xml_to_string;
 
 use crate::calc::arg::FORMULA_ERROR_VALUE;
 use crate::constants::{
@@ -127,6 +128,12 @@ impl File {
 
     /// Add a picture to a worksheet from raw bytes.
     pub fn add_picture_from_bytes(&mut self, sheet: &str, cell: &str, pic: &Picture) -> Result<()> {
+        if pic.insert_type == PictureInsertType::PLACE_IN_CELL {
+            return self.add_in_cell_picture(sheet, cell, pic);
+        }
+        if pic.insert_type == PictureInsertType::DISPIMG {
+            return self.add_dispimg_picture(sheet, cell, pic);
+        }
         if pic.insert_type != PictureInsertType::PLACE_OVER_CELLS {
             return Err(Box::new(ErrParameterInvalid));
         }
@@ -193,6 +200,358 @@ impl File {
         self.add_content_type_part(drawing_id, "drawings")?;
         self.add_sheet_name_space(sheet, NAMESPACE_SPREADSHEET);
         Ok(())
+    }
+
+    /// Embed a picture into a cell using the Microsoft rich data mechanism
+    /// (Excel 365 "Place in Cell").
+    fn add_in_cell_picture(&mut self, sheet: &str, cell: &str, pic: &Picture) -> Result<()> {
+        use crate::constants::*;
+        let mapped_ext = resolve_picture_extension(pic)?;
+        let _ = self.work_sheet_reader(sheet)?;
+        let media = self.add_media(&pic.file, &mapped_ext);
+        let media_target = format!("..{}", media.trim_start_matches("xl"));
+
+        // Reference the media part from `xl/richData/_rels/richValueRel.xml.rels`.
+        let mut embed_rid = 0;
+        if let Ok(Some(rels)) = self.rels_reader(DEFAULT_XML_PATH_RD_RICH_VALUE_REL_RELS) {
+            for rel in &rels.relationships {
+                if rel.r#type == SOURCE_RELATIONSHIP_IMAGE && rel.target == media_target {
+                    embed_rid = rel.id.trim_start_matches("rId").parse().unwrap_or(0);
+                    break;
+                }
+            }
+        }
+        if embed_rid == 0 {
+            embed_rid = self.add_rels(
+                DEFAULT_XML_PATH_RD_RICH_VALUE_REL_RELS,
+                SOURCE_RELATIONSHIP_IMAGE,
+                &media_target,
+                "",
+            );
+        }
+
+        // Append the relationship ID to `xl/richData/richValueRel.xml`.
+        let mut rvr = self.rich_value_rel_reader()?;
+        rvr.rels.push(crate::xml::metadata::XlsxRichValueRelRelationship {
+            id: format!("rId{embed_rid}"),
+        });
+        let rel_idx = rvr.rels.len() - 1;
+        let mut out = xml_to_string(&rvr).unwrap_or_default().into_bytes();
+        crate::file::replace_root_namespace_attributes(
+            &mut out,
+            &format!("xmlns=\"{NAMESPACE_RICH_DATA_2}\""),
+        )?;
+        self.save_file_list(DEFAULT_XML_PATH_RD_RICH_VALUE_REL, &out);
+
+        // Ensure the `_localImage` structure exists in `rdRichValueStructure.xml`.
+        let mut structs = self.rich_value_structures_reader()?;
+        let struct_idx = match structs.s.iter().position(|s| s.t == "_localImage") {
+            Some(idx) => idx,
+            None => {
+                structs
+                    .s
+                    .push(crate::xml::metadata::XlsxRichValueStructure {
+                        t: "_localImage".to_string(),
+                        k: vec![
+                            crate::xml::metadata::XlsxRichValueKey {
+                                n: "_rvRel:LocalImageIdentifier".to_string(),
+                                t: Some("i".to_string()),
+                            },
+                            crate::xml::metadata::XlsxRichValueKey {
+                                n: "CalcOrigin".to_string(),
+                                t: Some("i".to_string()),
+                            },
+                        ],
+                    });
+                structs.s.len() - 1
+            }
+        };
+        structs.count = Some(structs.s.len() as i64);
+        let mut out = xml_to_string(&structs).unwrap_or_default().into_bytes();
+        crate::file::replace_root_namespace_attributes(
+            &mut out,
+            &format!(
+                "xmlns=\"{NAMESPACE_RICH_DATA}\" count=\"{}\"",
+                structs.s.len()
+            ),
+        )?;
+        self.save_file_list(DEFAULT_XML_PATH_RD_RICH_VALUE_STRUCTURE, &out);
+
+        // Append the rich value to `rdrichvalue.xml`.
+        let mut rvdata = self.rich_value_reader()?;
+        rvdata.rv.push(crate::xml::metadata::XlsxRichValue {
+            s: struct_idx as i64,
+            v: vec![rel_idx.to_string(), "5".to_string()],
+            fb: None,
+        });
+        rvdata.count = Some(rvdata.rv.len() as i64);
+        let rv_idx = rvdata.rv.len() - 1;
+        let mut out = xml_to_string(&rvdata).unwrap_or_default().into_bytes();
+        crate::file::replace_root_namespace_attributes(
+            &mut out,
+            &format!(
+                "xmlns=\"{NAMESPACE_RICH_DATA}\" count=\"{}\"",
+                rvdata.rv.len()
+            ),
+        )?;
+        self.save_file_list(DEFAULT_XML_PATH_RD_RICH_VALUE, &out);
+
+        // Register the rich value in `xl/metadata.xml` and tag the cell.
+        let vm = self.upsert_in_cell_metadata(rv_idx);
+        let path = self
+            .get_sheet_xml_path(sheet)
+            .ok_or_else(|| crate::errors::ErrSheetNotExist {
+                sheet_name: sheet.to_string(),
+            })?;
+        let mut ws = self.work_sheet_reader(sheet)?;
+        {
+            let c = crate::cell::get_or_make_cell(&mut ws, cell);
+            c.t = Some("e".to_string());
+            c.v = Some(FORMULA_ERROR_VALUE.to_string());
+            c.vm = Some(vm);
+        }
+        crate::cell::update_dimension(&mut ws)?;
+        self.sheet.insert(path, ws);
+
+        // Register package-level content types and workbook relationships.
+        crate::sheet::set_content_type_part_image_extensions(self)?;
+        self.ensure_content_type_override("/xl/metadata.xml", CONTENT_TYPE_SHEET_METADATA)?;
+        self.ensure_content_type_override(
+            "/xl/richData/rdrichvalue.xml",
+            CONTENT_TYPE_RD_RICH_VALUE,
+        )?;
+        self.ensure_content_type_override(
+            "/xl/richData/rdRichValueStructure.xml",
+            CONTENT_TYPE_RD_RICH_VALUE_STRUCTURE,
+        )?;
+        self.ensure_content_type_override(
+            "/xl/richData/richValueRel.xml",
+            CONTENT_TYPE_RICH_VALUE_REL,
+        )?;
+        self.ensure_workbook_rel(SOURCE_RELATIONSHIP_SHEET_METADATA, "metadata.xml");
+        self.ensure_workbook_rel(SOURCE_RELATIONSHIP_RD_RICH_VALUE, "richData/rdrichvalue.xml");
+        self.ensure_workbook_rel(
+            SOURCE_RELATIONSHIP_RD_RICH_VALUE_STRUCTURE,
+            "richData/rdRichValueStructure.xml",
+        );
+        self.ensure_workbook_rel(SOURCE_RELATIONSHIP_RICH_VALUE_REL, "richData/richValueRel.xml");
+        Ok(())
+    }
+
+    /// Embed a picture into a cell using the Kingsoft WPS Office `DISPIMG`
+    /// mechanism.
+    fn add_dispimg_picture(&mut self, sheet: &str, cell: &str, pic: &Picture) -> Result<()> {
+        use crate::constants::*;
+        let mapped_ext = resolve_picture_extension(pic)?;
+        let dims =
+            image_dimensions(&pic.file, &mapped_ext).ok_or_else(|| Box::new(ErrImgLoad))?;
+        let _ = self.work_sheet_reader(sheet)?;
+        let media = self.add_media(&pic.file, &mapped_ext);
+        let media_target = media.trim_start_matches("xl/").to_string();
+
+        // Reference the media part from `xl/_rels/cellimages.xml.rels`.
+        let mut embed_rid = 0;
+        if let Ok(Some(rels)) = self.rels_reader(DEFAULT_XML_PATH_CELL_IMAGES_RELS) {
+            for rel in &rels.relationships {
+                if rel.r#type == SOURCE_RELATIONSHIP_IMAGE && rel.target == media_target {
+                    embed_rid = rel.id.trim_start_matches("rId").parse().unwrap_or(0);
+                    break;
+                }
+            }
+        }
+        if embed_rid == 0 {
+            embed_rid = self.add_rels(
+                DEFAULT_XML_PATH_CELL_IMAGES_RELS,
+                SOURCE_RELATIONSHIP_IMAGE,
+                &media_target,
+                "",
+            );
+        }
+
+        // Append the picture entry to `xl/cellimages.xml`.
+        let img_id = format!("ID_{:032X}", rand::random::<u128>());
+        let alt_text = pic
+            .format
+            .as_ref()
+            .map(|f| f.alt_text.clone())
+            .unwrap_or_default();
+        let mut cell_images = self.cell_images_reader()?;
+        let cnv_id = 1000 + cell_images.cell_image.len() as i32 + 1;
+        cell_images
+            .cell_image
+            .push(crate::xml::decode_drawing::DecodeCellImage {
+                pic: crate::xml::decode_drawing::DecodePic {
+                    nv_pic_pr: crate::xml::decode_drawing::DecodeNvPicPr {
+                        c_nv_pr: crate::xml::decode_drawing::DecodeCNvPr {
+                            id: cnv_id,
+                            name: img_id.clone(),
+                            descr: alt_text,
+                            ..Default::default()
+                        },
+                        ..Default::default()
+                    },
+                    blip_fill: crate::xml::decode_drawing::DecodeBlipFill {
+                        blip: crate::xml::decode_drawing::DecodeBlip {
+                            embed: format!("rId{embed_rid}"),
+                            cstate: Some("print".to_string()),
+                            ..Default::default()
+                        },
+                        ..Default::default()
+                    },
+                    sp_pr: crate::xml::decode_drawing::DecodeSpPr {
+                        xfrm: crate::xml::decode_drawing::DecodeXfrm {
+                            ext: crate::xml::decode_drawing::DecodePositiveSize2D {
+                                cx: dims.0 as i64 * EMU as i64,
+                                cy: dims.1 as i64 * EMU as i64,
+                                ..Default::default()
+                            },
+                            ..Default::default()
+                        },
+                        ..Default::default()
+                    },
+                },
+            });
+        self.save_file_list(
+            DEFAULT_XML_PATH_CELL_IMAGES,
+            build_cell_images_xml(&cell_images).as_bytes(),
+        );
+
+        // Write the DISPIMG formula into the target cell.
+        let path = self
+            .get_sheet_xml_path(sheet)
+            .ok_or_else(|| crate::errors::ErrSheetNotExist {
+                sheet_name: sheet.to_string(),
+            })?;
+        let mut ws = self.work_sheet_reader(sheet)?;
+        {
+            let c = crate::cell::get_or_make_cell(&mut ws, cell);
+            c.t = Some("str".to_string());
+            c.f = Some(crate::xml::worksheet::XlsxF {
+                content: format!("_xlfn.DISPIMG(\"{img_id}\",1)"),
+                ..Default::default()
+            });
+            c.v = Some(img_id);
+        }
+        crate::cell::update_dimension(&mut ws)?;
+        self.sheet.insert(path, ws);
+
+        // Register package-level content types and the workbook relationship.
+        crate::sheet::set_content_type_part_image_extensions(self)?;
+        self.ensure_content_type_override("/xl/cellimages.xml", CONTENT_TYPE_WPS_CELL_IMAGES)?;
+        self.ensure_workbook_rel(SOURCE_RELATIONSHIP_CELL_IMAGES, "cellimages.xml");
+        Ok(())
+    }
+
+    /// Ensure `[Content_Types].xml` contains an override for the given part.
+    fn ensure_content_type_override(&self, part_name: &str, content_type: &str) -> Result<()> {
+        let mut ct = self.content_types_reader()?;
+        let exists = ct.entries.iter().any(|e| {
+            matches!(e, crate::xml::content_types::XlsxContentTypeEntry::Override(o) if o.part_name == part_name)
+        });
+        if !exists {
+            ct.entries
+                .push(crate::xml::content_types::XlsxContentTypeEntry::Override(
+                    crate::xml::content_types::XlsxOverride {
+                        part_name: part_name.to_string(),
+                        content_type: content_type.to_string(),
+                    },
+                ));
+            *self.content_types.lock().unwrap() = Some(ct);
+        }
+        Ok(())
+    }
+
+    /// Ensure the workbook relationships part contains a relationship of the
+    /// given type.
+    fn ensure_workbook_rel(&self, rel_type: &str, target: &str) {
+        let path = self.get_workbook_rels_path();
+        let mut rels = self.rels_reader(&path).unwrap_or_default().unwrap_or_default();
+        if rels.relationships.iter().any(|r| r.r#type == rel_type) {
+            return;
+        }
+        let max_rid = rels
+            .relationships
+            .iter()
+            .filter_map(|r| r.id.trim_start_matches("rId").parse::<i32>().ok())
+            .max()
+            .unwrap_or(0);
+        rels.relationships
+            .push(crate::xml::workbook::XlsxRelationship {
+                id: format!("rId{}", max_rid + 1),
+                r#type: rel_type.to_string(),
+                target: target.to_string(),
+                target_mode: None,
+            });
+        self.relationships.insert(path, rels);
+    }
+
+    /// Add or update `xl/metadata.xml` for a new in-cell rich value, returning
+    /// the 1-based value metadata index (`vm`) for the cell.
+    fn upsert_in_cell_metadata(&self, rv_idx: usize) -> u64 {
+        use crate::constants::*;
+        let raw = self.read_xml(DEFAULT_XML_PATH_METADATA);
+        let text = String::from_utf8_lossy(&raw).into_owned();
+        let body = match text.find("?>") {
+            Some(pos) => &text[pos + 2..],
+            None => text.as_str(),
+        };
+        let rvb = format!(
+            "<bk><extLst><ext uri=\"{{3e2802c4-a4d2-4d8b-9148-e3be6c30e623}}\"><xlrd:rvb i=\"{rv_idx}\"/></ext></extLst></bk>"
+        );
+        if !body.contains("<metadata") {
+            let content = format!(
+                "<metadata xmlns=\"{NAMESPACE_SPREADSHEET}\" xmlns:xlrd=\"{NAMESPACE_RICH_DATA_2}\">\
+<metadataTypes count=\"1\"><metadataType name=\"XLRICHVALUE\" minSupportedVersion=\"120000\" copy=\"1\" pasteAll=\"1\" pasteValues=\"1\" merge=\"1\" splitFirst=\"1\" rowColShift=\"1\" clearAll=\"1\" clearFormats=\"1\" clearContents=\"1\" clearComments=\"1\" assign=\"1\" coerce=\"1\"/></metadataTypes>\
+<futureMetadata name=\"XLRICHVALUE\" count=\"1\">{rvb}</futureMetadata>\
+<valueMetadata count=\"1\"><bk><rc t=\"1\" v=\"{rv_idx}\"/></bk></valueMetadata>\
+</metadata>"
+            );
+            self.save_file_list(DEFAULT_XML_PATH_METADATA, content.as_bytes());
+            return 1;
+        }
+        let mut s = body.to_string();
+        // Append a value metadata block after the existing ones.
+        let vm = if let Some(open) = s.find("<valueMetadata") {
+            let gt = open + s[open..].find('>').unwrap_or(0);
+            let tag = s[open..=gt].to_string();
+            let count = parse_count_attr(&tag).unwrap_or(0);
+            let new_tag = set_count_attr(&tag, count + 1);
+            s.replace_range(open..=gt, &new_tag);
+            if let Some(close) = s.find("</valueMetadata>") {
+                s.insert_str(close, &format!("<bk><rc t=\"1\" v=\"{rv_idx}\"/></bk>"));
+            }
+            count + 1
+        } else {
+            if let Some(close) = s.find("</metadata>") {
+                s.insert_str(
+                    close,
+                    &format!("<valueMetadata count=\"1\"><bk><rc t=\"1\" v=\"{rv_idx}\"/></bk></valueMetadata>"),
+                );
+            }
+            1
+        };
+        // Keep the XLRICHVALUE future metadata in sync.
+        if let Some(open) = s.find("<futureMetadata name=\"XLRICHVALUE\"") {
+            let gt = open + s[open..].find('>').unwrap_or(0);
+            let tag = s[open..=gt].to_string();
+            let count = parse_count_attr(&tag).unwrap_or(0);
+            let new_tag = set_count_attr(&tag, count + 1);
+            s.replace_range(open..=gt, &new_tag);
+            if let Some(close) = s[open..].find("</futureMetadata>") {
+                s.insert_str(open + close, &rvb);
+            }
+        } else {
+            let fm = format!("<futureMetadata name=\"XLRICHVALUE\" count=\"1\">{rvb}</futureMetadata>");
+            let pos = s
+                .find("<cellMetadata")
+                .or_else(|| s.find("<valueMetadata"))
+                .or_else(|| s.find("</metadata>"));
+            if let Some(pos) = pos {
+                s.insert_str(pos, &fm);
+            }
+        }
+        self.save_file_list(DEFAULT_XML_PATH_METADATA, s.as_bytes());
+        vm as u64
     }
 
     /// Return all pictures anchored at a given cell in a worksheet.
@@ -487,6 +846,72 @@ fn is_dispimg_formula(content: &str) -> bool {
     let content = content.strip_prefix('=').unwrap_or(content);
     let content = content.strip_prefix("_xlfn.").unwrap_or(content);
     content.starts_with("DISPIMG")
+}
+
+/// Resolve and validate the image file extension of a picture.
+fn resolve_picture_extension(pic: &Picture) -> Result<String> {
+    let mut ext = pic.extension.clone();
+    if ext.is_empty() {
+        if let Some(detected) = detect_image_extension(&pic.file) {
+            ext = detected;
+        }
+    }
+    let types = supported_image_types();
+    let mapped_ext = types.get(&ext.to_lowercase()).cloned().unwrap_or(ext);
+    if !types.contains_key(&mapped_ext.to_lowercase()) {
+        return Err(Box::new(ErrImgExt));
+    }
+    Ok(mapped_ext)
+}
+
+/// Serialize the WPS `xl/cellimages.xml` part. The decode structs intentionally
+/// ignore namespace prefixes, so the document is built by hand to keep the
+/// conventional `etc:`, `xdr:`, `a:` and `r:` prefixes used by WPS Office.
+fn build_cell_images_xml(images: &DecodeCellImages) -> String {
+    use crate::constants::*;
+    let mut out = format!(
+        "<etc:cellImages xmlns:etc=\"{NAMESPACE_WPS_ET_CUSTOM_DATA}\" xmlns:xdr=\"http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing\" xmlns:a=\"{NAMESPACE_DRAWING_ML_MAIN}\" xmlns:r=\"{SOURCE_RELATIONSHIP}\">"
+    );
+    for img in &images.cell_image {
+        let pic = &img.pic;
+        let cnv = &pic.nv_pic_pr.c_nv_pr;
+        let blip = &pic.blip_fill.blip;
+        let cstate = blip.cstate.as_deref().unwrap_or("");
+        out.push_str(&format!(
+            "<etc:cellImage><xdr:pic><xdr:nvPicPr><xdr:cNvPr id=\"{}\" name=\"{}\" descr=\"{}\"/><xdr:cNvPicPr/></xdr:nvPicPr><xdr:blipFill><a:blip r:embed=\"{}\" cstate=\"{}\"/><a:stretch><a:fillRect/></a:stretch></xdr:blipFill><xdr:spPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"{}\" cy=\"{}\"/></a:xfrm><a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom></xdr:spPr></xdr:pic></etc:cellImage>",
+            cnv.id,
+            escape_xml_attr(&cnv.name),
+            escape_xml_attr(&cnv.descr),
+            blip.embed,
+            cstate,
+            pic.sp_pr.xfrm.ext.cx,
+            pic.sp_pr.xfrm.ext.cy,
+        ));
+    }
+    out.push_str("</etc:cellImages>");
+    out
+}
+
+/// Escape a string for use in an XML attribute value.
+fn escape_xml_attr(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+}
+
+/// Return the value of the `count` attribute in an XML start tag.
+fn parse_count_attr(tag: &str) -> Option<usize> {
+    let re = regex::Regex::new(r#"count="(\d+)""#).unwrap();
+    re.captures(tag)
+        .and_then(|c| c.get(1))
+        .and_then(|m| m.as_str().parse().ok())
+}
+
+/// Replace the value of the `count` attribute in an XML start tag.
+fn set_count_attr(tag: &str, count: usize) -> String {
+    let re = regex::Regex::new(r#"count="\d+""#).unwrap();
+    re.replace(tag, format!("count=\"{count}\"")).into_owned()
 }
 
 fn cell_in_merge_range(cell: &str, range_ref: &str) -> Result<bool> {
@@ -967,5 +1392,92 @@ mod tests {
 
         let cells = f.get_picture_cells("Sheet1").unwrap();
         assert_eq!(cells, vec!["B2"]);
+    }
+
+    fn red_pixel_png() -> Vec<u8> {
+        vec![
+            0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48,
+            0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x02, 0x00, 0x00,
+            0x00, 0x90, 0x77, 0x53, 0xde, 0x00, 0x00, 0x00, 0x0c, 0x49, 0x44, 0x41, 0x54, 0x08,
+            0x99, 0x63, 0xf8, 0x0f, 0x00, 0x00, 0x01, 0x01, 0x00, 0x05, 0x18, 0xd8, 0x4e, 0x00,
+            0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
+        ]
+    }
+
+    #[test]
+    fn in_cell_picture_round_trip() {
+        let png = red_pixel_png();
+        let path = std::env::temp_dir().join("excelize_rs_in_cell_picture.xlsx");
+        let path_str = path.to_string_lossy().to_string();
+        {
+            let mut f = File::new_with_options(Options::default());
+            f.add_picture_from_bytes(
+                "Sheet1",
+                "B2",
+                &Picture {
+                    extension: ".png".to_string(),
+                    file: png.clone(),
+                    insert_type: PictureInsertType::PLACE_IN_CELL,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+            let pics = f.get_pictures("Sheet1", "B2").unwrap();
+            assert!(
+                pics.iter()
+                    .any(|p| p.insert_type == PictureInsertType::PLACE_IN_CELL && p.file == png),
+                "in-cell picture should be readable before save"
+            );
+            f.save_as(&path_str).unwrap();
+            f.close().unwrap();
+        }
+        let mut f = File::open_file(&path_str, Options::default()).unwrap();
+        let pics = f.get_pictures("Sheet1", "B2").unwrap();
+        assert_eq!(pics.len(), 1);
+        assert_eq!(pics[0].insert_type, PictureInsertType::PLACE_IN_CELL);
+        assert_eq!(pics[0].file, png);
+        f.close().unwrap();
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn dispimg_picture_round_trip() {
+        let png = red_pixel_png();
+        let path = std::env::temp_dir().join("excelize_rs_dispimg_picture.xlsx");
+        let path_str = path.to_string_lossy().to_string();
+        {
+            let mut f = File::new_with_options(Options::default());
+            f.add_picture_from_bytes(
+                "Sheet1",
+                "B2",
+                &Picture {
+                    extension: ".png".to_string(),
+                    file: png.clone(),
+                    insert_type: PictureInsertType::DISPIMG,
+                    format: Some(GraphicOptions {
+                        alt_text: "wps image".to_string(),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+            assert!(
+                f.get_cell_formula("Sheet1", "B2")
+                    .unwrap()
+                    .contains("DISPIMG")
+            );
+            f.save_as(&path_str).unwrap();
+            f.close().unwrap();
+        }
+        let mut f = File::open_file(&path_str, Options::default()).unwrap();
+        let pics = f.get_pictures("Sheet1", "B2").unwrap();
+        assert!(
+            pics.iter()
+                .any(|p| p.insert_type == PictureInsertType::DISPIMG && p.file == png),
+            "expected a DISPIMG picture, got {pics:?}"
+        );
+        f.close().unwrap();
+        let _ = std::fs::remove_file(&path);
     }
 }

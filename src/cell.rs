@@ -1033,7 +1033,7 @@ pub(crate) fn find_cell_mut<'a>(ws: &'a mut XlsxWorksheet, cell: &str) -> Option
     None
 }
 
-fn get_or_make_cell<'a>(ws: &'a mut XlsxWorksheet, cell: &str) -> &'a mut XlsxC {
+pub(crate) fn get_or_make_cell<'a>(ws: &'a mut XlsxWorksheet, cell: &str) -> &'a mut XlsxC {
     let (_col, row_num) = cell_name_to_coordinates(cell).unwrap_or((1, 1));
     let row_idx = ws
         .sheet_data
@@ -1070,7 +1070,7 @@ fn get_or_make_cell<'a>(ws: &'a mut XlsxWorksheet, cell: &str) -> &'a mut XlsxC 
     &mut ws.sheet_data.row[last_row].c[last_cell]
 }
 
-fn update_dimension(ws: &mut XlsxWorksheet) -> Result<()> {
+pub(crate) fn update_dimension(ws: &mut XlsxWorksheet) -> Result<()> {
     if ws.sheet_data.row.is_empty() {
         ws.dimension = Some(crate::xml::worksheet::XlsxDimension {
             r#ref: "A1".to_string(),

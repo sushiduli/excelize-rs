@@ -71,6 +71,10 @@ pub const OLE_IDENTIFIER: &[u8] = &[0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0x
 // ------------------------------------------------------------------
 
 pub const NAMESPACE_SPREADSHEET: &str = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
+pub const NAMESPACE_RICH_DATA: &str = "http://schemas.microsoft.com/office/spreadsheetml/2017/richdata";
+pub const NAMESPACE_RICH_DATA_2: &str =
+    "http://schemas.microsoft.com/office/spreadsheetml/2017/richdata2";
+pub const NAMESPACE_WPS_ET_CUSTOM_DATA: &str = "http://www.wps.cn/officeDocument/2017/etCustomData";
 pub const NAMESPACE_DRAWING_ML_MAIN: &str = "http://schemas.openxmlformats.org/drawingml/2006/main";
 pub const NAMESPACE_EXTENDED_PROPERTIES: &str =
     "http://schemas.openxmlformats.org/officeDocument/2006/extended-properties";
@@ -147,6 +151,16 @@ pub const SOURCE_RELATIONSHIP_VBA_PROJECT: &str =
     "http://schemas.microsoft.com/office/2006/relationships/vbaProject";
 pub const SOURCE_RELATIONSHIP_WORKSHEET: &str =
     "http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet";
+pub const SOURCE_RELATIONSHIP_SHEET_METADATA: &str =
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/sheetMetadata";
+pub const SOURCE_RELATIONSHIP_CELL_IMAGES: &str =
+    "http://www.wps.cn/officeDocument/2020/cellImage";
+pub const SOURCE_RELATIONSHIP_RD_RICH_VALUE: &str =
+    "http://schemas.microsoft.com/office/2017/06/relationships/rdRichValue";
+pub const SOURCE_RELATIONSHIP_RD_RICH_VALUE_STRUCTURE: &str =
+    "http://schemas.microsoft.com/office/2017/06/relationships/rdRichValueStructure";
+pub const SOURCE_RELATIONSHIP_RICH_VALUE_REL: &str =
+    "http://schemas.microsoft.com/office/2022/10/relationships/richValueRel";
 
 // ------------------------------------------------------------------
 // Strict namespaces (for Strict Open XML → Transitional conversion)
@@ -208,6 +222,13 @@ pub const CONTENT_TYPE_TEMPLATE_MACRO: &str =
     "application/vnd.ms-excel.template.macroEnabled.main+xml";
 pub const CONTENT_TYPE_VBA: &str = "application/vnd.ms-office.vbaProject";
 pub const CONTENT_TYPE_VML: &str = "application/vnd.openxmlformats-officedocument.vmlDrawing";
+pub const CONTENT_TYPE_SHEET_METADATA: &str =
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheetMetadata+xml";
+pub const CONTENT_TYPE_WPS_CELL_IMAGES: &str = "application/vnd.wps-officedocument.cellimage+xml";
+pub const CONTENT_TYPE_RD_RICH_VALUE: &str = "application/vnd.ms-excel.rdrichvalue+xml";
+pub const CONTENT_TYPE_RD_RICH_VALUE_STRUCTURE: &str =
+    "application/vnd.ms-excel.rdrichvaluestructure+xml";
+pub const CONTENT_TYPE_RICH_VALUE_REL: &str = "application/vnd.ms-excel.richvaluerel+xml";
 
 // ------------------------------------------------------------------
 // Extension list URIs
