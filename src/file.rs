@@ -24,6 +24,7 @@ use crate::constants::{
     DEFAULT_XML_PATH_DOC_PROPS_APP, DEFAULT_XML_PATH_DOC_PROPS_CORE, DEFAULT_XML_PATH_METADATA,
     DEFAULT_XML_PATH_RD_RICH_VALUE, DEFAULT_XML_PATH_RD_RICH_VALUE_REL,
     DEFAULT_XML_PATH_RD_RICH_VALUE_REL_RELS, DEFAULT_XML_PATH_RD_RICH_VALUE_STRUCTURE,
+    DEFAULT_XML_PATH_RD_RICH_VALUE_STRUCTURE_LEGACY,
     DEFAULT_XML_PATH_RD_RICH_VALUE_WEB_IMAGE, DEFAULT_XML_PATH_RD_RICH_VALUE_WEB_IMAGE_RELS,
     DEFAULT_XML_PATH_RELS, DEFAULT_XML_PATH_SHARED_STRINGS, DEFAULT_XML_PATH_SHEET,
     DEFAULT_XML_PATH_STYLES, DEFAULT_XML_PATH_THEME, DEFAULT_XML_PATH_WORKBOOK,
@@ -810,10 +811,12 @@ impl File {
     pub fn rich_value_structures_reader(
         &self,
     ) -> Result<crate::xml::metadata::XlsxRichValueStructures> {
-        let data =
-            namespace_strict_to_transitional(&self.apply_charset_transcoder(
-                &self.read_xml(DEFAULT_XML_PATH_RD_RICH_VALUE_STRUCTURE),
-            )?);
+        let mut raw = self.read_xml(DEFAULT_XML_PATH_RD_RICH_VALUE_STRUCTURE);
+        if raw.is_empty() {
+            // Fall back to the capitalized part name written before 0.1.8.
+            raw = self.read_xml(DEFAULT_XML_PATH_RD_RICH_VALUE_STRUCTURE_LEGACY);
+        }
+        let data = namespace_strict_to_transitional(&self.apply_charset_transcoder(&raw)?);
         if data.is_empty() {
             return Ok(crate::xml::metadata::XlsxRichValueStructures::default());
         }

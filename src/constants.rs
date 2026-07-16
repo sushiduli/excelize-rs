@@ -52,7 +52,10 @@ pub const DEFAULT_XML_PATH_VOLATILE_DEPS: &str = "xl/volatileDeps.xml";
 pub const DEFAULT_XML_PATH_METADATA: &str = "xl/metadata.xml";
 pub const DEFAULT_XML_PATH_RD_RICH_VALUE: &str = "xl/richData/rdrichvalue.xml";
 pub const DEFAULT_XML_PATH_RD_RICH_VALUE_REL: &str = "xl/richData/richValueRel.xml";
-pub const DEFAULT_XML_PATH_RD_RICH_VALUE_STRUCTURE: &str = "xl/richData/rdRichValueStructure.xml";
+pub const DEFAULT_XML_PATH_RD_RICH_VALUE_STRUCTURE: &str = "xl/richData/rdrichvaluestructure.xml";
+/// Legacy part name used before 0.1.8; kept for reading older files.
+pub const DEFAULT_XML_PATH_RD_RICH_VALUE_STRUCTURE_LEGACY: &str =
+    "xl/richData/rdRichValueStructure.xml";
 pub const DEFAULT_XML_PATH_RD_RICH_VALUE_WEB_IMAGE: &str = "xl/richData/rdRichValueWebImage.xml";
 pub const DEFAULT_XML_PATH_RD_RICH_VALUE_REL_RELS: &str = "xl/richData/_rels/richValueRel.xml.rels";
 pub const DEFAULT_XML_PATH_RD_RICH_VALUE_WEB_IMAGE_RELS: &str =
@@ -74,6 +77,8 @@ pub const NAMESPACE_SPREADSHEET: &str = "http://schemas.openxmlformats.org/sprea
 pub const NAMESPACE_RICH_DATA: &str = "http://schemas.microsoft.com/office/spreadsheetml/2017/richdata";
 pub const NAMESPACE_RICH_DATA_2: &str =
     "http://schemas.microsoft.com/office/spreadsheetml/2017/richdata2";
+pub const NAMESPACE_RICH_VALUE_REL: &str =
+    "http://schemas.microsoft.com/office/spreadsheetml/2022/richvaluerel";
 pub const NAMESPACE_WPS_ET_CUSTOM_DATA: &str = "http://www.wps.cn/officeDocument/2017/etCustomData";
 pub const NAMESPACE_DRAWING_ML_MAIN: &str = "http://schemas.openxmlformats.org/drawingml/2006/main";
 pub const NAMESPACE_EXTENDED_PROPERTIES: &str =

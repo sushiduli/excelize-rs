@@ -117,8 +117,25 @@ pub struct XlsxRichValueRels {
 /// rich value property.
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct XlsxRichValueRelRelationship {
-    #[serde(rename = "@id")]
+    #[serde(rename = "@r:id", default, skip_serializing_if = "String::is_empty")]
     pub id: String,
+    /// Legacy plain `id` attribute written before 0.1.8; only used when
+    /// deserializing older files.
+    #[serde(rename = "@id", default, skip_serializing)]
+    pub legacy_id: String,
+}
+
+impl XlsxRichValueRelRelationship {
+    /// Return the relationship ID, accepting both the `r:id` form used by
+    /// Excel and the plain `id` form written by older versions of this
+    /// library.
+    pub fn rel_id(&self) -> &str {
+        if self.id.is_empty() {
+            &self.legacy_id
+        } else {
+            &self.id
+        }
+    }
 }
 
 /// Directly maps the rvStructures element. This element specifies rich value

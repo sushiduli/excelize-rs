@@ -249,12 +249,13 @@ impl File {
         let mut rvr = self.rich_value_rel_reader()?;
         rvr.rels.push(crate::xml::metadata::XlsxRichValueRelRelationship {
             id: format!("rId{embed_rid}"),
+            ..Default::default()
         });
         let rel_idx = rvr.rels.len() - 1;
         let mut out = xml_to_string(&rvr).unwrap_or_default().into_bytes();
         crate::file::replace_root_namespace_attributes(
             &mut out,
-            &format!("xmlns=\"{NAMESPACE_RICH_DATA_2}\""),
+            &format!("xmlns=\"{NAMESPACE_RICH_VALUE_REL}\" xmlns:r=\"{SOURCE_RELATIONSHIP}\""),
         )?;
         self.save_file_list(DEFAULT_XML_PATH_RD_RICH_VALUE_REL, &out);
 
@@ -336,7 +337,7 @@ impl File {
             CONTENT_TYPE_RD_RICH_VALUE,
         )?;
         self.ensure_content_type_override(
-            "/xl/richData/rdRichValueStructure.xml",
+            "/xl/richData/rdrichvaluestructure.xml",
             CONTENT_TYPE_RD_RICH_VALUE_STRUCTURE,
         )?;
         self.ensure_content_type_override(
@@ -347,7 +348,7 @@ impl File {
         self.ensure_workbook_rel(SOURCE_RELATIONSHIP_RD_RICH_VALUE, "richData/rdrichvalue.xml");
         self.ensure_workbook_rel(
             SOURCE_RELATIONSHIP_RD_RICH_VALUE_STRUCTURE,
-            "richData/rdRichValueStructure.xml",
+            "richData/rdrichvaluestructure.xml",
         );
         self.ensure_workbook_rel(SOURCE_RELATIONSHIP_RICH_VALUE_REL, "richData/richValueRel.xml");
         Ok(())
@@ -515,8 +516,8 @@ impl File {
         );
         if !body.contains("<metadata") {
             let content = format!(
-                "<metadata xmlns=\"{NAMESPACE_SPREADSHEET}\" xmlns:xlrd=\"{NAMESPACE_RICH_DATA_2}\">\
-<metadataTypes count=\"1\"><metadataType name=\"XLRICHVALUE\" minSupportedVersion=\"120000\" copy=\"1\" pasteAll=\"1\" pasteValues=\"1\" merge=\"1\" splitFirst=\"1\" rowColShift=\"1\" clearAll=\"1\" clearFormats=\"1\" clearContents=\"1\" clearComments=\"1\" assign=\"1\" coerce=\"1\"/></metadataTypes>\
+                "<metadata xmlns=\"{NAMESPACE_SPREADSHEET}\" xmlns:xlrd=\"{NAMESPACE_RICH_DATA}\">\
+<metadataTypes count=\"1\"><metadataType name=\"XLRICHVALUE\" minSupportedVersion=\"120000\" copy=\"1\" pasteAll=\"1\" pasteValues=\"1\" merge=\"1\" splitFirst=\"1\" rowColShift=\"1\" clearFormats=\"1\" clearComments=\"1\" assign=\"1\" coerce=\"1\"/></metadataTypes>\
 <futureMetadata name=\"XLRICHVALUE\" count=\"1\">{rvb}</futureMetadata>\
 <valueMetadata count=\"1\"><bk><rc t=\"1\" v=\"{rv_idx}\"/></bk></valueMetadata>\
 </metadata>"
@@ -688,7 +689,7 @@ impl File {
         let idx = val.parse::<usize>()?;
         let rich_value_rel = self.rich_value_rel_reader()?;
         let r_id = match rich_value_rel.rels.get(idx) {
-            Some(rel) => rel.id.clone(),
+            Some(rel) => rel.rel_id().to_string(),
             None => return Ok(None),
         };
         let rel = self.get_rich_data_rich_value_rel_relationship(&r_id);
@@ -1451,6 +1452,23 @@ mod tests {
         assert_eq!(pics.len(), 1);
         assert_eq!(pics[0].insert_type, PictureInsertType::PLACE_IN_CELL);
         assert_eq!(pics[0].file, png);
+        // The rich data parts must use the same namespace and attribute forms
+        // as files produced by Excel.
+        let rels = String::from_utf8(f.read_xml("xl/richData/richValueRel.xml")).unwrap();
+        assert!(
+            rels.contains("xmlns=\"http://schemas.microsoft.com/office/spreadsheetml/2022/richvaluerel\""),
+            "richValueRel.xml should use the 2022/richvaluerel namespace: {rels}"
+        );
+        assert!(rels.contains("<rel r:id=\"rId1\"/>"), "rel should use r:id: {rels}");
+        let metadata = String::from_utf8(f.read_xml("xl/metadata.xml")).unwrap();
+        assert!(
+            metadata.contains("xmlns:xlrd=\"http://schemas.microsoft.com/office/spreadsheetml/2017/richdata\""),
+            "metadata.xml should declare xlrd as 2017/richdata: {metadata}"
+        );
+        assert!(
+            !f.read_xml("xl/richData/rdrichvaluestructure.xml").is_empty(),
+            "structure part should use the lowercase part name"
+        );
         f.close().unwrap();
         let _ = std::fs::remove_file(&path);
     }
