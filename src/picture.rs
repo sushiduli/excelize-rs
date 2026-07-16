@@ -107,6 +107,20 @@ impl File {
         path: &str,
         opts: Option<&GraphicOptions>,
     ) -> Result<()> {
+        self.add_picture_from_file(sheet, cell, path, PictureInsertType::PLACE_OVER_CELLS, opts)
+    }
+
+    /// Add a picture to a worksheet from a file path with an explicit insert
+    /// type, for example [PictureInsertType::PLACE_IN_CELL] (Excel 365) or
+    /// [PictureInsertType::DISPIMG] (WPS) to embed the picture in the cell.
+    pub fn add_picture_from_file(
+        &mut self,
+        sheet: &str,
+        cell: &str,
+        path: &str,
+        insert_type: PictureInsertType,
+        opts: Option<&GraphicOptions>,
+    ) -> Result<()> {
         let ext = std::path::Path::new(path)
             .extension()
             .and_then(|e| e.to_str())
@@ -121,6 +135,7 @@ impl File {
             extension: ext,
             file,
             format: opts.cloned(),
+            insert_type,
             ..Default::default()
         };
         self.add_picture_from_bytes(sheet, cell, &pic)
@@ -1438,6 +1453,67 @@ mod tests {
         assert_eq!(pics[0].file, png);
         f.close().unwrap();
         let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn add_picture_from_file_round_trip() {
+        let png = red_pixel_png();
+        let img_path = std::env::temp_dir().join("excelize_rs_add_picture_from_file.png");
+        std::fs::write(&img_path, &png).unwrap();
+        let img_path_str = img_path.to_string_lossy().to_string();
+        let path = std::env::temp_dir().join("excelize_rs_add_picture_from_file.xlsx");
+        let path_str = path.to_string_lossy().to_string();
+        {
+            let mut f = File::new_with_options(Options::default());
+            f.add_picture_from_file(
+                "Sheet1",
+                "B2",
+                &img_path_str,
+                PictureInsertType::PLACE_IN_CELL,
+                None,
+            )
+            .unwrap();
+            f.add_picture_from_file(
+                "Sheet1",
+                "B3",
+                &img_path_str,
+                PictureInsertType::DISPIMG,
+                Some(&GraphicOptions {
+                    alt_text: "wps image".to_string(),
+                    ..Default::default()
+                }),
+            )
+            .unwrap();
+            assert!(
+                f.add_picture_from_file(
+                    "Sheet1",
+                    "B4",
+                    "image.xyz",
+                    PictureInsertType::PLACE_OVER_CELLS,
+                    None,
+                )
+                .is_err(),
+                "unsupported extension should be rejected"
+            );
+            f.save_as(&path_str).unwrap();
+            f.close().unwrap();
+        }
+        let mut f = File::open_file(&path_str, Options::default()).unwrap();
+        let pics = f.get_pictures("Sheet1", "B2").unwrap();
+        assert!(
+            pics.iter()
+                .any(|p| p.insert_type == PictureInsertType::PLACE_IN_CELL && p.file == png),
+            "expected a PLACE_IN_CELL picture, got {pics:?}"
+        );
+        let pics = f.get_pictures("Sheet1", "B3").unwrap();
+        assert!(
+            pics.iter()
+                .any(|p| p.insert_type == PictureInsertType::DISPIMG && p.file == png),
+            "expected a DISPIMG picture, got {pics:?}"
+        );
+        f.close().unwrap();
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(&img_path);
     }
 
     #[test]
