@@ -141,6 +141,16 @@ impl File {
         self.add_picture_from_bytes(sheet, cell, &pic)
     }
 
+    /// Embed a picture directly into a cell from a file path.
+    ///
+    /// This is a convenience wrapper around
+    /// [File::add_picture_from_file] that uses
+    /// [PictureInsertType::PLACE_IN_CELL], the format used by Excel 365 /
+    /// Excel 2021+ for in-cell images.
+    pub fn embed_image(&mut self, sheet: &str, cell: &str, path: &str) -> Result<()> {
+        self.add_picture_from_file(sheet, cell, path, PictureInsertType::PLACE_IN_CELL, None)
+    }
+
     /// Add a picture to a worksheet from raw bytes.
     pub fn add_picture_from_bytes(&mut self, sheet: &str, cell: &str, pic: &Picture) -> Result<()> {
         if pic.insert_type == PictureInsertType::PLACE_IN_CELL {
@@ -1418,6 +1428,30 @@ mod tests {
             0x99, 0x63, 0xf8, 0x0f, 0x00, 0x00, 0x01, 0x01, 0x00, 0x05, 0x18, 0xd8, 0x4e, 0x00,
             0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
         ]
+    }
+
+    #[test]
+    fn embed_image_round_trip() {
+        let png = red_pixel_png();
+        let img_path = std::env::temp_dir().join("excelize_rs_embed_image.png");
+        std::fs::write(&img_path, &png).unwrap();
+        let img_path_str = img_path.to_string_lossy().to_string();
+        let path = std::env::temp_dir().join("excelize_rs_embed_image.xlsx");
+        let path_str = path.to_string_lossy().to_string();
+        {
+            let mut f = File::new_with_options(Options::default());
+            f.embed_image("Sheet1", "B2", &img_path_str).unwrap();
+            f.save_as(&path_str).unwrap();
+            f.close().unwrap();
+        }
+        let mut f = File::open_file(&path_str, Options::default()).unwrap();
+        let pics = f.get_pictures("Sheet1", "B2").unwrap();
+        assert_eq!(pics.len(), 1);
+        assert_eq!(pics[0].insert_type, PictureInsertType::PLACE_IN_CELL);
+        assert_eq!(pics[0].file, png);
+        f.close().unwrap();
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(&img_path);
     }
 
     #[test]
